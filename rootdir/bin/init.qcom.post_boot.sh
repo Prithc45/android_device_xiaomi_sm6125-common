@@ -26,6 +26,9 @@
 # OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
 # ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
+# Tuned for Redmi Note 8 (ginkgo) - Snapdragon 665 (trinket)
+# Optimized for: performance, battery, smoothness, multitasking
+#
 
 target=`getprop ro.board.platform`
 
@@ -50,17 +53,28 @@ function configure_read_ahead_kb_values() {
             echo 512 > $dm
         done
     fi
+
+    # UFS specific read ahead (ginkgo uses UFS storage)
+    echo 512 > /sys/block/sda/queue/read_ahead_kb
+    echo 512 > /sys/block/sdf/queue/read_ahead_kb
 }
 
 function configure_memory_parameters() {
     # Set allocstall_threshold to 0 for all targets.
-    # Set swappiness to 100 for all targets
     echo 0 > /sys/module/vmpressure/parameters/allocstall_threshold
-    echo 100 > /proc/sys/vm/swappiness
 
-    # Disable wsf for all targets beacause we are using efk.
+    # Tuned swappiness for 4GB RAM - lower is better for multitasking
+    echo 60 > /proc/sys/vm/swappiness
+
+    # Disable wsf because we are using efk.
     # wsf Range : 1..1000 So set to bare minimum value 1.
     echo 1 > /proc/sys/vm/watermark_scale_factor
+
+    # VM dirty tuning - smoother writes, less I/O stutter
+    echo 10 > /proc/sys/vm/dirty_ratio
+    echo 5 > /proc/sys/vm/dirty_background_ratio
+    echo 500 > /proc/sys/vm/dirty_expire_centisecs
+    echo 3000 > /proc/sys/vm/dirty_writeback_centisecs
 
     configure_read_ahead_kb_values
 }
@@ -76,7 +90,7 @@ case "$target" in
         case "$soc_id" in
             "394")
 
-            # Core control parameters on big
+            # Core control parameters on big cluster
             echo 2 > /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
             echo 40 > /sys/devices/system/cpu/cpu4/core_ctl/busy_down_thres
             echo 60 > /sys/devices/system/cpu/cpu4/core_ctl/busy_up_thres
@@ -84,47 +98,58 @@ case "$target" in
             echo 1 > /sys/devices/system/cpu/cpu4/core_ctl/is_big_cluster
             echo 4 > /sys/devices/system/cpu/cpu4/core_ctl/task_thres
 
-            # Setting b.L scheduler parameters
-            echo 67 > /proc/sys/kernel/sched_downmigrate
-            echo 77 > /proc/sys/kernel/sched_upmigrate
-            echo 85 > /proc/sys/kernel/sched_group_downmigrate
-            echo 100 > /proc/sys/kernel/sched_group_upmigrate
+            # Tuned b.L scheduler migration thresholds
+            # Lower upmigrate = tasks move to big cores more easily (perf)
+            # Lower downmigrate = tasks come back to little cores sooner (battery)
+            echo 60 > /proc/sys/kernel/sched_downmigrate
+            echo 70 > /proc/sys/kernel/sched_upmigrate
+            echo 75 > /proc/sys/kernel/sched_group_downmigrate
+            echo 90 > /proc/sys/kernel/sched_group_upmigrate
 
-            # cpuset settings
+            # cpuset settings - background tasks on little cores only
             echo 0-3 > /dev/cpuset/background/cpus
             echo 0-3 > /dev/cpuset/system-background/cpus
 
-            # configure governor settings for little cluster
+            # configure governor settings for little cluster (cpu0-3)
+            # Max freq: 1.80 GHz (1804800 KHz)
             echo "schedutil" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
             echo 0 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us
             echo 0 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us
-            echo 1305600 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_freq
+            # hispeed at ~78% of max — snappy but not power hungry
+            echo 1401600 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_freq
+            # min at 614.4 MHz — lowest available for battery saving
             echo 614400 > /sys/devices/system/cpu/cpu0/cpufreq/scaling_min_freq
 
-            # configure governor settings for big cluster
+            # configure governor settings for big cluster (cpu4-7)
+            # Max freq: 2.02 GHz (2016000 KHz)
             echo "schedutil" > /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor
-            echo 0 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us
-            echo 0 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us
-            echo 1401600 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_freq
-            echo 1056000 > /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq
+            echo 0 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/up_rate_limit_us
+            echo 0 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/down_rate_limit_us
+            # hispeed at ~80% of max — good perf headroom
+            echo 1612800 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_freq
+            # min at 768 MHz — lower than stock 1056MHz, better idle battery
+            echo 768000 > /sys/devices/system/cpu/cpu4/cpufreq/scaling_min_freq
 
             echo 1 > /proc/sys/kernel/sched_walt_rotate_big_tasks
 
             # sched_load_boost as -6 is equivalent to target load as 85. It is per cpu tunable.
-            echo -6 >  /sys/devices/system/cpu/cpu0/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu1/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu2/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu3/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu4/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu5/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu6/sched_load_boost
-            echo -6 >  /sys/devices/system/cpu/cpu7/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu0/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu1/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu2/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu3/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu4/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu5/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu6/sched_load_boost
+            echo -6 > /sys/devices/system/cpu/cpu7/sched_load_boost
             echo 85 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_load
             echo 85 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_load
 
-            #set schedtune.boost to 10 for camera 60fps perview +60 fps recorder perf.
-            #echo 10 > /dev/stune/foreground/schedtune.boost
+            # Foreground tasks prefer idle cores for lower latency
             echo 1 > /dev/stune/foreground/schedtune.prefer_idle
+
+            # WALT history tuning - better task load tracking
+            echo 10 > /proc/sys/kernel/sched_ravg_hist_size
+            echo 1 > /proc/sys/kernel/sched_window_stats_policy
 
             # Set Memory parameters
             configure_memory_parameters
@@ -164,11 +189,11 @@ case "$target" in
 
             done
 
-            # memlat specific settings are moved to seperate file under
+            # memlat specific settings are moved to separate file under
             # device/target specific folder
             setprop vendor.dcvs.prop 1
 
-            # colcoation v3 disabled
+            # colocation v3 disabled
             echo 0 > /proc/sys/kernel/sched_min_task_util_for_boost
             echo 0 > /proc/sys/kernel/sched_min_task_util_for_colocation
             echo 0 > /proc/sys/kernel/sched_little_cluster_coloc_fmin_khz
