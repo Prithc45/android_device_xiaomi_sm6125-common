@@ -113,7 +113,8 @@ case "$target" in
             # configure governor settings for little cluster (cpu0-3)
             # Max freq: 1.80 GHz (1804800 KHz)
             echo "schedutil" > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
-            echo 0 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us
+            # 500us up_rate_limit — faster frequency ramp up, fixes animation lag
+            echo 500 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/up_rate_limit_us
             echo 0 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/down_rate_limit_us
             # hispeed at ~78% of max — snappy but not power hungry
             echo 1401600 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_freq
@@ -123,7 +124,8 @@ case "$target" in
             # configure governor settings for big cluster (cpu4-7)
             # Max freq: 2.02 GHz (2016000 KHz)
             echo "schedutil" > /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor
-            echo 0 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/up_rate_limit_us
+            # 500us up_rate_limit — faster frequency ramp up on big cores
+            echo 500 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/up_rate_limit_us
             echo 0 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/down_rate_limit_us
             # hispeed at ~80% of max — good perf headroom
             echo 1612800 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_freq
@@ -141,8 +143,9 @@ case "$target" in
             echo -6 > /sys/devices/system/cpu/cpu5/sched_load_boost
             echo -6 > /sys/devices/system/cpu/cpu6/sched_load_boost
             echo -6 > /sys/devices/system/cpu/cpu7/sched_load_boost
-            echo 85 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_load
-            echo 85 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_load
+            # Lowered to 75 — CPU boosts sooner, fixes animation lag on app open/close
+            echo 75 > /sys/devices/system/cpu/cpu0/cpufreq/schedutil/hispeed_load
+            echo 75 > /sys/devices/system/cpu/cpu4/cpufreq/schedutil/hispeed_load
 
             # Foreground tasks prefer idle cores for lower latency
             echo 1 > /dev/stune/foreground/schedtune.prefer_idle
